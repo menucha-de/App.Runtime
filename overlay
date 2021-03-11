@@ -1,0 +1,64 @@
+# Local filesystem mounting                     -*- shell-script -*-
+
+#
+# This script overrides local_mount_root() in /scripts/local
+# and mounts a multi layer root overlay filesystem.
+#
+
+. /scripts/local
+
+local_mount_root()
+{
+        if [ -x /usr/sbin/i2cset ]; then
+          i2cset -y -m 0x07 0 0x5a 0x11 0 b
+        fi
+
+        local_top
+        if [ -z "${ROOT}" ]; then
+                panic "No root device specified. Boot arguments must include a root= parameter."
+        fi
+        local_device_setup "${ROOT}" "root file system"
+        ROOT="${DEV}"
+
+        # Get the root filesystem type if not set
+        if [ -z "${ROOTFSTYPE}" ] || [ "${ROOTFSTYPE}" = auto ]; then
+                FSTYPE=$(get_fstype "${ROOT}")
+        else
+                FSTYPE=${ROOTFSTYPE}
+        fi
+
+        local_premount
+
+        if [ "${readonly?}" = "y" ]; then
+                roflag=-r
+        else
+                roflag=-w
+        fi
+
+        PART=${ROOT##*/}
+        TMP=$(echo /sys/block/*/${PART})
+        TMP=${TMP%/*}
+        DEV=${TMP##*/}
+        START=$(cat /sys/block/${DEV}/${PART}/start)
+        OLD=$(($START+$(cat /sys/block/${DEV}/${PART}/size)))
+        NEW=$(($(cat /sys/block/${DEV}/size)-8))
+        if [ "$NEW" -gt "$OLD" ]; then
+          parted /dev/${DEV} unit s resizepart 2 $NEW
+          e2fsck -f -y ${ROOT}
+          resize2fs -f ${ROOT}
+        fi
+
+        checkfs "${ROOT}" root "${FSTYPE}"
+
+        mkdir /mnt
+
+        # Mount root
+        if ! mount ${roflag} ${FSTYPE:+-t "${FSTYPE}"} "${ROOT}" /mnt; then
+                panic "Failed to mount ${ROOT} as root file system."
+        fi
+
+        modprobe overlay
+        cd /mnt/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots
+        mount -t overlay $(cat /mnt/rootflags) overlay ${rootmnt}
+        mount -o bind /mnt/containerd ${rootmnt}/var/lib/containerd
+}

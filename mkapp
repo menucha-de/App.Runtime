@@ -1,0 +1,18 @@
+#!/bin/bash
+
+set -e
+set -x
+
+env
+
+. /usr/share/mkapp/functions
+
+init
+echo "deb $MIRROR bullseye main" >> $ROOT/etc/apt/sources.list
+update
+setup main containerd containernetworking-plugins libpam-systemd udev tzdata iptables iproute2 coreutils kmod bash ncurses-term procps parted dropbear-bin dropbear-scp systemd-service art dmidecode
+mkdir -p rfs/etc/ssl/certs /rfs/var/lib/containerd rfs/etc/dropbear
+cp -a /etc/ssl/certs/ca-certificates.crt rfs/etc/ssl/certs
+./update-pam
+find rfs/* -exec touch -h -r rfs {} \;
+cat Dockerfile

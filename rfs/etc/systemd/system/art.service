@@ -1,0 +1,16 @@
+[Unit]
+Description=App runtime service
+After=systemd.service containerd.service sys-devices-virtual-net-br0.device
+Wants=systemd.service containerd.service sys-devices-virtual-net-br0.device
+StartLimitBurst=5
+
+[Service]
+Environment="LOGHOST=art"
+ExecStart=/opt/peramic-app/art
+ExecStartPre=/usr/sbin/iptables -I INPUT -d 169.254.0.0/16 ! -i br0 -j DROP
+ExecStopPost=/usr/sbin/iptables -D INPUT -d 169.254.0.0/16 ! -i br0 -j DROP
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

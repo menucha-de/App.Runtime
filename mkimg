@@ -1,0 +1,154 @@
+#!/bin/bash
+
+echo "::debug::variant: $VARIANT"
+echo "::debug::version: $VERSION"
+
+set -e
+set -x
+
+env
+
+echo "deb $MIRROR bullseye main" >> /etc/apt/sources.list
+
+apt-get update
+apt-get install -y -t stretch containerd/bullseye jq dosfstools wget zip
+
+IMG=disk.img
+BOOT=/tmp/boot
+ROOT=/tmp/root
+RUN=/tmp/run
+PCR=ghcr.io/peramic
+
+echo "VARIANT=$VARIANT"
+echo "HOSTNAME=$HOSTNAME"
+
+# create disk
+dd if=/dev/zero of=$IMG bs=1G count=1
+echo -e "o\nn\np\n1\n\n+100m\nt\nc\na\nn\np\n2\n\n\np\nw" | /sbin/fdisk $IMG
+
+# create and mount root
+ls -al /dev/loop*
+losetup -D
+OFFSET=$(fdisk -l $IMG | grep "Linux$" | awk '{print $2}')
+SIZE=$(fdisk -l $IMG | grep "Linux$" | awk '{print $4}')
+LOOP=$(losetup --offset $((512*$OFFSET)) --sizelimit $((512*SIZE)) --show -f $IMG)
+mkfs.ext4 -L rootfs ${LOOP}
+mkdir $ROOT $RUN
+mount ${LOOP} $ROOT
+
+mkdir -p $ROOT/runtime/fs/etc/systemd/system $ROOT/runtime/work
+echo "$HOSTNAME" > $ROOT/runtime/fs/etc/hostname
+
+containerd --root $ROOT/containerd -a $RUN/containerd.sock &
+PID=$!
+
+for i in runtime:$VARIANT-latest auth:latest market:$VARIANT-latest httpd:latest log:latest mqtt:latest; do
+  ARGS="--label NAME=${i%%:*} --label IS_ACTIVE=true --env LOGHOST=${i%%:*}"
+  unset DIGEST
+  ctr -a $RUN/containerd.sock -n system i pull --platform linux/arm/v7 -k $PCR/$i
+  if [ ${i%%:*} != "runtime" ]; then
+    if [[ "$(ctr -a $RUN/containerd.sock -n system i ls name==$PCR/$i)" == *"manifest.list.v2+json"* ]]; then
+      DIGEST=$(ctr -a $RUN/containerd.sock -n system content get $(ctr -a $RUN/containerd.sock -n system i ls name==$PCR/$i 2>/dev/null | tail -1 | awk '{ print $3 }') | jq -r '.manifests[] | select(.platform.os == "linux") | select(.platform.architecture == "arm")| select(.platform.variant == "v7") | .digest')
+      if [ "$DIGEST" ]; then
+        DIGEST="@$DIGEST"
+        ctr -a $RUN/containerd.sock -n system i pull --platform linux/arm/v7 -k $PCR/$i$DIGEST
+      fi
+    fi
+    if [ ${i%%:*} == "httpd" ]; then
+      ARGS="$ARGS --net-host"
+    else
+      ARGS="$ARGS --with-ns network:/var/run/netns/${i%%:*}"
+      ARGS="$ARGS --mount type=bind,src=/etc/resolv.conf,dst=/etc/resolv.conf,options=rbind:ro"
+      ARGS="$ARGS --mount type=bind,src=/etc/hosts,dst=/etc/hosts,options=rbind:ro"
+    fi
+    if [ ${i%%:*} == "auth" ]; then
+      ARGS="$ARGS --mount type=bind,src=/var/lib/apps/auth/conf,dst=/opt/peramic-app/conf,options=rbind:rw"
+      mkdir -p $ROOT/runtime/fs/var/lib/apps/auth/conf/auth
+    fi
+    if [ ${i%%:*} == "mqtt" ]; then
+      ARGS="$ARGS"' --label org.opencontainers.image.exposedPorts={"1883/tcp":{},"8883/tcp":{},"9001/tcp":{}}'
+      ARGS="$ARGS --mount type=bind,src=/var/lib/apps/mqtt/conf,dst=/etc/mosquitto/conf.d,options=rbind:rw"
+      mkdir -p $ROOT/runtime/fs/var/lib/apps/mqtt/conf
+      find $ROOT/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/ -path */etc/mosquitto/conf.d/* -exec cp {} $ROOT/runtime/fs/var/lib/apps/mqtt/conf/ \;
+    fi
+  fi
+  ctr -a $RUN/containerd.sock -n system c create $ARGS $PCR/$i$DIGEST ${i%%:*}
+  if [ ${i%%:*} != "runtime" ]; then
+cat > $ROOT/runtime/fs/etc/systemd/system/${i%%:*}.service <<EOF
+[Unit]
+Description= Service
+After=containerd.service
+PartOf=containerd.service
+
+[Service]
+ExecStart=/opt/peramic-app/art -s -n ${i%%:*} -ns system
+Restart=always
+RestartSec=0.1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  fi
+
+done
+
+ctr -a $RUN/containerd.sock -n system snapshots m runtime runtime | sed -e "s/.* -o /-o /g" -e "s/\/tmp\/root\/containerd\/io.containerd.snapshotter.v1.overlayfs\/snapshots\///g" -e "s/workdir=[^,]*/workdir=\/mnt\/runtime\/work/g" -e "s/upperdir=[^,]*/upperdir=\/mnt\/runtime\/fs/g" > $ROOT/rootflags
+
+kill $PID
+
+if [[ "$VARIANT" == "mp"* ]]; then
+  sed -i $ROOT/rootflags -e "s/index=off,//g"
+  if [ "$MAC" ]; then
+  mkdir -p $ROOT/runtime/fs/etc/systemd/network
+cat > $ROOT/runtime/fs/etc/systemd/network/00-eth0.network <<EOF
+[Match]
+Name=eth0
+
+[Link]
+MACAddress=$MAC
+
+[Network]
+DHCP=yes
+LLMNR=yes
+MulticastDNS=yes
+EOF
+  fi
+fi
+
+TMP=$(mktemp -d)
+find $ROOT/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/ -name boot -not -empty -type d -exec cp -r {} $TMP \;
+
+# clean up root
+umount $ROOT
+rm $RUN/containerd.sock*
+rmdir $ROOT $RUN
+losetup -d $LOOP
+
+# create and mount boot
+OFFSET=$(fdisk -l $IMG | grep "W95 FAT32 (LBA)$" | awk '{print $3}')
+SIZE=$(fdisk -l $IMG | grep "W95 FAT32 (LBA)$" | awk '{print $5}')
+LOOP=$(losetup --offset $((512*$OFFSET)) --sizelimit $((512*SIZE)) --show -f $IMG)
+mkfs.vfat -n boot ${LOOP}
+mkdir $BOOT
+mount ${LOOP} $BOOT
+
+mv $TMP/boot/* $BOOT/
+
+if [[ "$VARIANT" == "rpi" ]]; then
+  for n in COPYING.linux LICENCE.broadcom bootcode.bin fixup.dat fixup4.dat fixup4cd.dat fixup4db.dat fixup4x.dat fixup_cd.dat fixup_db.dat fixup_x.dat start.elf start4.elf start4cd.elf start4db.elf start4x.elf start_cd.elf start_db.elf start_x.elf; do
+    echo "Downloading $n ..."
+    wget -qO $BOOT/$n https://github.com/raspberrypi/firmware/raw/stable/boot/$n
+  done
+fi
+
+umount $BOOT
+rmdir $BOOT $TMP/boot $TMP
+losetup -d $LOOP
+
+IMAGE=runtime_${VARIANT}_${ARCH}_$(date +%Y-%m-%d)
+mv $IMG $IMAGE.img
+zip -j ${IMAGE}.zip ${IMAGE}.img
+rm ${IMAGE}.img
+
+echo '::set-output name=IMAGE::'${IMAGE}.zip

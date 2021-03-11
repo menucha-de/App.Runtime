@@ -1,0 +1,49 @@
+#!/bin/bash
+
+echo "::debug::variant: $VARIANT"
+
+set -x
+set -e
+
+case "$VARIANT" in
+  mp2)
+    PACKAGES="i2c-tools"
+    IMAGE='Yes'
+    ;;
+esac
+
+export INITRD='No'
+
+env
+
+echo "deb $MIRROR stretch main" >> /etc/apt/sources.list
+apt-get update
+apt-get install -y linux-image-armmp/stretch u-boot-tools parted e2fsprogs $PACKAGES
+
+VERSION=$(ls /lib/modules)
+apt-get download linux-image-$VERSION
+dpkg --fsys-tarfile linux-image-${VERSION}_*.deb | tar --wildcards --delete -T variant/$VARIANT/patternfile | gzip -n > linux-image.tar.gz
+touch linux-image.tar.gz -r linux-image-${VERSION}_*.deb
+
+cat variant/$VARIANT/modules >> /etc/initramfs-tools/modules
+cp fsck /etc/initramfs-tools/hooks/
+sed -i /etc/initramfs-tools/initramfs.conf -e "s/^MODULES=.*/MODULES=list/g" -e "s/^BUSYBOX=.*/BUSYBOX=n/g"
+
+depmod $VERSION
+mkdir -p $VARIANT/usr/sbin $VARIANT/boot $VARIANT/lib/modules/$VERSION
+ln -s iptables-legacy $VARIANT/usr/sbin/iptables
+cp -a /lib/modules/$VERSION/modules.* $VARIANT/lib/modules/$VERSION/
+rm $VARIANT/lib/modules/$VERSION/modules.{order,builtin}
+
+cp overlay /etc/initramfs-tools/scripts/
+mkinitramfs -o initrd.img $VERSION
+mkimage -a 0 -e 0 -n "Ramdisk Image $VERSION" -A arm -O linux -T ramdisk -C gzip -d initrd.img $VARIANT/boot/initrd.uImage
+if [ "$IMAGE" ]; then
+  mkimage -n "Linux Kernel $VERSION" -A arm -O linux -T kernel -C none -a 0x2000000 -e 0x2000000 -d /boot/vmlinuz-$VERSION $VARIANT/boot/vmlinuz.uImage
+else
+  cp -a /boot/vmlinuz-$VERSION $VARIANT/boot/vmlinuz
+fi
+cp -a variant/$VARIANT/dtb $VARIANT/boot/dtb
+sed "s/SIZE/$(stat -c %s initrd.img)/g" variant/$VARIANT/uboot.env > $VARIANT/boot/uboot.env 
+
+set +x

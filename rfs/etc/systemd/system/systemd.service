@@ -1,0 +1,13 @@
+[Unit]
+Description=Systemd service
+StartLimitBurst=5
+
+[Service]
+Environment="LOGHOST=system"
+WorkingDirectory=/opt/peramic-app
+ExecStart=/opt/peramic-app/systemd-service
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

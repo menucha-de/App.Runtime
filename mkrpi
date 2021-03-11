@@ -1,0 +1,39 @@
+#!/bin/bash
+
+set -x
+set -e
+
+env
+
+apt-get update
+apt-get install -y initramfs-tools parted e2fsprogs ca-certificates
+
+echo "deb [trusted=yes] $APT $DIST main" > /etc/apt/sources.list.d/local.list
+if [ "${DIST//*-}" = "staging" ]; then
+  echo "deb [trusted=yes] $APT ${DIST%%-*} main" >> /etc/apt/sources.list.d/local.list
+fi
+
+apt-get update
+apt-get install -y linux-modules-rpi
+
+echo overlay >> /etc/initramfs-tools/modules
+cp fsck /etc/initramfs-tools/hooks/
+sed -i /etc/initramfs-tools/initramfs.conf -e "s/^MODULES=.*/MODULES=list/g" -e "s/^BUSYBOX=.*/BUSYBOX=n/g"
+VERSION=$(ls /lib/modules)
+depmod $VERSION
+cp overlay /etc/initramfs-tools/scripts/
+mkdir -p rpi/boot rpi/lib/modules/$VERSION
+mkinitramfs -v -o rpi/boot/initrd7.img $VERSION
+
+cp -a /lib/modules/$VERSION/modules.* rpi/lib/modules/$VERSION/
+rm rpi/lib/modules/$VERSION/modules.{order,builtin}
+
+cp variant/rpi/config.txt rpi/boot/
+cp variant/rpi/cmdline.txt rpi/boot/
+apt-get download linux-image-rpi linux-modules-rpi
+for i in *.deb; do
+  echo "Converting $i"
+  dpkg --fsys-tarfile $i | tar --wildcards --delete -T patternfile | gzip -n > ${i/_*/}.tar.gz
+  touch ${i/_*/}.tar.gz -r $i
+done
+find rpi

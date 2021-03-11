@@ -1,0 +1,11 @@
+[Unit]
+Description=Dropbear service
+Wants=dropbearkey.service
+After=network.target
+
+[Service]
+ExecStart=/usr/sbin/dropbear -B -F -r /etc/dropbear/dropbear_rsa_host_key
+ExecReload=kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target

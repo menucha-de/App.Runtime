@@ -1,0 +1,10 @@
+[Unit]
+Description=CNI cleanup service
+Before=containerd.service
+
+[Service]
+Type=oneshot
+ExecStart=rm -rf /var/lib/cni /var/run/netns
+
+[Install]
+WantedBy=multi-user.target

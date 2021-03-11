@@ -1,0 +1,61 @@
+name: Build runtime release image
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: 'Architecture'
+        default: 'armhf'
+      dist:
+        description: 'Distribution'
+        default: 'buster'
+        required: true
+      variant:
+        description: 'Variant'
+        default: 'rpi'
+        required: true
+      hostname:
+        description: 'Hostname'
+        default: 'raspberrypi'
+        required: true
+      mac:
+        description: 'MAC Address (only for MICA)'
+        default: '00:0A:ED:00:00:00'
+      release:
+        description: 'Release'
+        required: true
+jobs:
+  build:
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Check out
+        uses: actions/checkout@v2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - run: docker run --workdir /github/workspace --rm --privileged -e ARCH -e DIST -e APT -e MIRROR -e VARIANT -e HOSTNAME --entrypoint bash -v "$GITHUB_WORKSPACE":"/github/workspace" debian:stretch-slim "-c" "./mkimg"
+        env:
+          ARCH: ${{ github.event.inputs.arch }}
+          DIST: ${{ github.event.inputs.dist }}
+          APT: 'https://peramic.github.io/debian'
+          MIRROR: 'http://httpredir.debian.org/debian'
+          VARIANT: ${{ github.event.inputs.variant }}
+          HOSTNAME: ${{ github.event.inputs.hostname }}
+        id: build
+      - name: Create Release
+        id: release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.event.inputs.release }}
+          release_name: Release ${{ github.event.inputs.release }}
+      - name: Upload Release Asset
+        id: upload-release-asset 
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.release.outputs.upload_url }}
+          asset_path: ${{ steps.build.outputs.IMAGE }}
+          asset_name: ${{ steps.build.outputs.IMAGE }}
+          asset_content_type: application/zip

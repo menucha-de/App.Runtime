@@ -1,0 +1,19 @@
+#!/bin/sh
+
+. /usr/share/initramfs-tools/hook-functions
+
+
+copy_exec /sbin/fsck
+copy_exec /sbin/logsave
+copy_exec /sbin/fsck.ext4
+
+set -x
+
+copy_exec /sbin/parted
+copy_exec /sbin/resize2fs
+
+if [ -x /usr/sbin/i2cset ]; then
+  copy_exec /usr/sbin/i2cset
+fi
+
+set +x

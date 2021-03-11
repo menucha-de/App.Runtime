@@ -1,0 +1,264 @@
+/*
+ * Copyright (C) 2017 HARTING Software IT Development GmbH & Co. KG - http://www.harting.com/
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * Original license:
+ *
+ * Device Tree file for Marvell Armada 385 development board
+ * (DB-88F6820-AMC)
+ *
+ * Copyright (C) 2014 Marvell
+ *
+ * Gregory CLEMENT <gregory.clement@free-electrons.com>
+ *
+ * This file is dual-licensed: you can use it either under the terms
+ * of the GPL or the X11 license, at your option. Note that this dual
+ * licensing only applies to this file, and not this project as a
+ * whole.
+ *
+ *  a) This file is licensed under the terms of the GNU General Public
+ *     License version 2.  This program is licensed "as is" without
+ *     any warranty of any kind, whether express or implied.
+ *
+ * Or, alternatively,
+ *
+ *  b) Permission is hereby granted, free of charge, to any person
+ *     obtaining a copy of this software and associated documentation
+ *     files (the "Software"), to deal in the Software without
+ *     restriction, including without limitation the rights to use,
+ *     copy, modify, merge, publish, distribute, sublicense, and/or
+ *     sell copies of the Software, and to permit persons to whom the
+ *     Software is furnished to do so, subject to the following
+ *     conditions:
+ *
+ *     The above copyright notice and this permission notice shall be
+ *     included in all copies or substantial portions of the Software.
+ *
+ *     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *     EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ *     OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *     NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ *     HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ *     WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ *     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ *     OTHER DEALINGS IN THE SOFTWARE.
+ */
+
+/dts-v1/;
+#include <dt-bindings/gpio/gpio.h>
+#include "armada-385.dtsi"
+
+/ {
+	model = "Marvell Armada 385 MICA-P2";
+	compatible = "marvell,armada385", "marvell,armada380";
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	aliases {
+		i2c0 = &i2c0;
+		spi0 = &spi0;
+	};
+
+	memory {
+		device_type = "memory";
+		reg = <0x00000000 0x80000000>; /* 2 GB */
+	};
+
+	reg_usb_f_vbus: usb_vbus@0 {
+		compatible = "regulator-fixed";
+		regulator-name = "usb-f-vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		startup-delay-us = <200000>;
+		enable-active-high;
+		regulator-boot-on;
+		regulator-always-on;
+		gpio = <&gpio0 15 GPIO_ACTIVE_HIGH>;
+	};
+
+	reg_usb_s_vbus: usb_vbus@1 {
+		compatible = "regulator-fixed";
+		regulator-name = "usb-s-vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		startup-delay-us = <200000>;
+		enable-active-high;
+		regulator-boot-on;
+		regulator-always-on;
+		gpio = <&gpio0 16 GPIO_ACTIVE_HIGH>;
+	};
+
+	reg_usb_b_vbus: usb_vbus@2 {
+		compatible = "regulator-fixed";
+		regulator-name = "usb-b-vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		startup-delay-us = <200000>;
+		enable-active-high;
+		regulator-boot-on;
+		regulator-always-on;
+		gpio = <&gpio0 14 GPIO_ACTIVE_HIGH>;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		error {
+			label = "status";
+			gpios = <&gpio0 20 GPIO_ACTIVE_LOW>;
+			default-state = "off";
+		};
+		function {
+			label = "function";
+			gpios = <&gpio0 19 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+	};
+
+	soc {
+		ranges = <MBUS_ID(0xf0, 0x01) 0 0xf1000000 0x100000
+				  MBUS_ID(0x01, 0x1d) 0 0xfff00000 0x100000>;
+/*
+		ranges = <MBUS_ID(0xf0, 0x01) 0 0xf1000000 0x100000
+				  MBUS_ID(0x01, 0x1d) 0 0xfff00000 0x100000
+				  MBUS_ID(0x09, 0x19) 0 0xf1100000 0x10000
+				  MBUS_ID(0x09, 0x15) 0 0xf1110000 0x10000>;
+*/
+
+		internal-regs {
+			i2c@11000 {
+				clock-frequency = <100000>;
+				u-boot,i2c-slave-addr = <0x0>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&i2c0_pins>;
+				status = "okay";
+
+				rtc1: pcf8523@68 {
+					compatible = "nxp,pcf8523";
+					reg = <0x68>;
+				};
+
+				temp: lm75@48 {
+					compatible = "national,lm75";
+					reg = <0x48>;
+				};
+
+				tpm: tpm@29 {
+					compatible = "atmel,at97sc3204t";
+					reg = <0x29>;
+					status = "okay";
+				};
+			};
+			
+			/*
+			//TODO fix pmic watchdog config
+			pmic0: da9063@5a {
+				compatible = "dlg,da9063";
+				reg = <0x5a>;
+				wdt {
+					compatible = "dlg,da9063-watchdog";
+				};
+			};
+			*/
+
+			serial@12000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&uart0_pins>;
+				status = "okay";
+				u-boot,dm-pre-reloc;
+			};
+
+			usb@58000 {
+				vbus-supply = <&reg_usb_b_vbus>;
+				vbus-disable-delay = <1000>;
+				status = "okay";
+			};
+
+			sdhci@d8000 {
+				broken-cd;
+				wp-inverted;
+				bus-width = <8>;
+				status = "okay";
+				no-1-8-v;
+				non-removable;
+
+				#address-cells = <1>;
+				#size-cells = <0>;
+				mmccard: mmccard@0 {
+					status = "okay";
+					compatible = "mmc-card";
+					reg = <0>;
+				};
+			};
+
+			usb3@f0000 {
+				vbus-supply = <&reg_usb_f_vbus>;
+				vbus-disable-delay = <1000>;
+				status = "okay";
+			};
+
+			usb3@f8000 {
+				vbus-supply = <&reg_usb_s_vbus>;
+				vbus-disable-delay = <1000>;
+				status = "okay";
+			};
+		};
+		pcie-controller {
+			status = "okay";
+
+			pcie@1,0 {
+				/* Port 0, Lane 0 */
+				status = "okay";
+			};
+
+			pcie@2,0 {
+				/* Port 1, Lane 0 */
+				status = "okay";
+			};
+
+			pcie@3,0 {
+				/* Port 2, Lane 0 */
+				status = "okay";
+			};
+		};
+	};
+};
+
+&spi0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi0_pins>;
+	status = "okay";
+	u-boot,dm-pre-reloc;
+
+	spi-flash@0 {
+		u-boot,dm-pre-reloc;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "st,m25p128", "jedec,spi-nor";
+		reg = <0>; /* Chip select 0 */
+		spi-max-frequency = <50000000>;
+		m25p,fast-read;
+
+		mtd0@00000000 {
+				label = "u-boot";
+				reg = <0x0 0xA0000>;
+		};
+
+		mtd1@000A0000 {
+				label = "data";
+				reg = <0xA0000 0x80000>;
+		};
+		mtd2@00120000 {
+				label = "user";
+				reg = <0x120000 0x2e0000>;
+		};
+	};
+};
+
+&refclk {
+	clock-frequency = <25000000>;
+};

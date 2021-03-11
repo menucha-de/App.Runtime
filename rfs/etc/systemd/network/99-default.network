@@ -1,0 +1,8 @@
+[Match]
+Name=*
+Type=!bridge
+
+[Network]
+DHCP=yes
+LLMNR=yes
+MulticastDNS=yes
