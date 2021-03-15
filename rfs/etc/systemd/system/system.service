@@ -1,11 +1,11 @@
 [Unit]
-Description=Systemd service
+Description=System service
 StartLimitBurst=5
 
 [Service]
 Environment="LOGHOST=system"
-WorkingDirectory=/opt/peramic-app
-ExecStart=/opt/peramic-app/systemd-service
+WorkingDirectory=/opt/menucha-de
+ExecStart=/opt/menucha-de/system
 Restart=always
 RestartSec=1
 

@@ -11,13 +11,13 @@ env
 echo "deb $MIRROR bullseye main" >> /etc/apt/sources.list
 
 apt-get update
-apt-get install -y -t stretch containerd/bullseye jq dosfstools wget zip
+apt-get install -y -t buster containerd/bullseye jq dosfstools wget zip
 
 IMG=disk.img
 BOOT=/tmp/boot
 ROOT=/tmp/root
 RUN=/tmp/run
-PCR=ghcr.io/peramic
+PCR=ghcr.io/menucha-de
 
 echo "VARIANT=$VARIANT"
 echo "HOSTNAME=$HOSTNAME"
@@ -62,7 +62,7 @@ for i in runtime:$VARIANT-latest auth:latest market:$VARIANT-latest httpd:latest
       ARGS="$ARGS --mount type=bind,src=/etc/hosts,dst=/etc/hosts,options=rbind:ro"
     fi
     if [ ${i%%:*} == "auth" ]; then
-      ARGS="$ARGS --mount type=bind,src=/var/lib/apps/auth/conf,dst=/opt/peramic-app/conf,options=rbind:rw"
+      ARGS="$ARGS --mount type=bind,src=/var/lib/apps/auth/conf,dst=/opt/menucha-de/conf,options=rbind:rw"
       mkdir -p $ROOT/runtime/fs/var/lib/apps/auth/conf/auth
     fi
     if [ ${i%%:*} == "mqtt" ]; then
@@ -81,7 +81,7 @@ After=containerd.service
 PartOf=containerd.service
 
 [Service]
-ExecStart=/opt/peramic-app/art -s -n ${i%%:*} -ns system
+ExecStart=/opt/menucha-de/art -s -n ${i%%:*} -ns system
 Restart=always
 RestartSec=0.1
 

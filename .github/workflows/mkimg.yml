@@ -36,7 +36,7 @@ jobs:
         env:
           ARCH: ${{ github.event.inputs.arch }}
           DIST: ${{ github.event.inputs.dist }}
-          APT: 'https://peramic.github.io/debian'
+          APT: 'https://menucha-de.github.io/debian'
           MIRROR: 'http://httpredir.debian.org/debian'
           VARIANT: ${{ github.event.inputs.variant }}
           HOSTNAME: ${{ github.event.inputs.hostname }}
