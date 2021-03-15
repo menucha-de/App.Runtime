@@ -10,7 +10,7 @@ env
 init
 echo "deb $MIRROR bullseye main" >> $ROOT/etc/apt/sources.list
 update
-setup main containerd containernetworking-plugins libpam-systemd udev tzdata iptables iproute2 coreutils kmod bash ncurses-term procps parted dropbear-bin dropbear-scp systemd-service art dmidecode
+setup containerd containernetworking-plugins libpam-systemd udev tzdata iptables iproute2 coreutils kmod bash ncurses-term procps parted dropbear-bin dropbear-scp system art dmidecode
 mkdir -p rfs/etc/ssl/certs /rfs/var/lib/containerd rfs/etc/dropbear
 cp -a /etc/ssl/certs/ca-certificates.crt rfs/etc/ssl/certs
 ./update-pam
